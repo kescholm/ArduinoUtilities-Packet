@@ -1,0 +1,20 @@
+{
+    "name": "ArduinoUtilities-Packet",
+    "version": "0.0.1",
+    "description": "Data stream packets with delimiter and CRC",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/kescholm/ArduinoUtilities-Packet.git"
+    },
+    "authors":
+    [
+      {
+        "name": "Kyle Chisholm",
+        "url": "https://www.kylechisholm.com/contact"
+      }
+    ],
+    "license": "MIT",
+    "dependencies": {},
+    "frameworks": "arduino",
+    "platforms": [ "espressif32", "amtelavr" ]
+}
