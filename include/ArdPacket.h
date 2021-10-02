@@ -285,10 +285,6 @@ void ard_serial_write_flush(void);
  */
 void ard_serial_read_flush(void);
 
-void dada() {
-    bool use_crc = true;
-    uint8_t delimiter = '|';
-}
 /**
  * @}
  */
