@@ -13,4 +13,4 @@ trim_trailing_whitespace = true
 indent_size = 4
 indent_style = space
 # 100 characters max per line
-max_line_length = 100
+max_line_length = 120

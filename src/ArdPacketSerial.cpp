@@ -1,16 +1,18 @@
 #include <Arduino.h>
 
+#include "ArdPacket.h"
+
 // Arduino Serial wrappers
 // -----------------------
 
-static size_t ard_serial_write_noblock(const uint8_t * buf, uint16_t len)
+size_t ard_serial_write_noblock(const uint8_t * buf, uint16_t len)
 {
     const uint16_t bytes_available = Serial.availableForWrite();
     const uint16_t bytes_to_write = (len < bytes_available ? len : bytes_available);
     return Serial.write(buf, bytes_to_write);
 }
 
-static uint16_t ard_serial_read_noblock(uint8_t * buf, const uint16_t len)
+uint16_t ard_serial_read_noblock(uint8_t * buf, const uint16_t len)
 {
     const uint16_t bytes_available = Serial.available();
     const uint16_t bytes_to_read = (len < bytes_available ? len : bytes_available);
@@ -21,7 +23,7 @@ static uint16_t ard_serial_read_noblock(uint8_t * buf, const uint16_t len)
     return bytes_to_read;
 }
 
-static int ard_serial_read_noblock_until(const uint8_t delimiter, const uint16_t max_tries)
+int ard_serial_read_noblock_until(const uint8_t delimiter, const uint16_t max_tries)
 {
     const uint16_t bytes_available = Serial.available();
     const uint16_t bytes_to_read = (max_tries < bytes_available ? max_tries : bytes_available);
@@ -43,7 +45,7 @@ static int ard_serial_read_noblock_until(const uint8_t delimiter, const uint16_t
 void ard_serial_begin(const unsigned long baud_rate)
 {
     Serial.begin(baud_rate);
-    while (!Serial) continue;
+    while (!Serial.availableForWrite()) continue;
 }
 
 void ard_serial_write_flush(void) { Serial.flush(); }
