@@ -106,3 +106,12 @@ For embedded testing with hardware connected by serial ports, set proper upload 
 pio test -e esp32 --upload-port /dev/ttyUSB0
 pio test -e atmega328 --upload-port /dev/ttyUSB1
 ```
+
+### CRC Code Generation
+
+Code was generated using [pycrc](https://pypi.org/project/pycrc/).
+
+```python
+python -m pycrc --model kermit --algorithm table-driven --generate h -o ArdCrc.h
+python -m pycrc --model kermit --algorithm table-driven --generate c -o ArdCrc.c
+```

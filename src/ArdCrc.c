@@ -2,7 +2,7 @@
  * \file
  * Functions and types for CRC checks.
  *
- * Generated on Tue Oct 13 17:08:05 2020
+ * Generated on Tue Mar  8 08:55:27 2022
  * by pycrc v0.9.2, https://pycrc.org
  * using the configuration:
  *  - Width         = 16
@@ -16,7 +16,6 @@
 #include "ArdCrc.h"     /* include the header file generated with pycrc */
 #include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
 
 
 
@@ -70,28 +69,4 @@ crc_t crc_update(crc_t crc, const void *data, size_t data_len)
         d++;
     }
     return crc & 0xffff;
-}
-
-
-bool ard_crc16_kermit_test(const uint8_t * data, const size_t len)
-{
-    crc_t crc;
-    crc = crc_init();
-    crc = crc_update(crc, data, len + sizeof(crc_t));
-    crc = crc_finalize(crc);
-
-    return (crc == 0x00);
-}
-
-uint16_t ard_crc16_kermit_append(uint8_t * data, const size_t len)
-{
-    crc_t crc;
-    crc = crc_init();
-    crc = crc_update(crc, data, len);
-    crc = crc_finalize(crc);
-
-    // append CRC
-    memcpy(&data[len], &crc, sizeof(crc_t));
-
-    return crc;
 }
