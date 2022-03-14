@@ -17,7 +17,10 @@ class ArdPacketSerialMock : public ArdPacketStreamInterface
    public:
     ArdPacketSerialMock() = default;
 
-    int available() override { return m_read_available; }
+    int available() override
+    {
+        return m_read_available;
+    }
     int read() override
     {
         int read_byte = -1;
@@ -44,7 +47,10 @@ class ArdPacketSerialMock : public ArdPacketStreamInterface
         return read_index;
     }
 
-    int availableForWrite() override { return m_write_available; }
+    int availableForWrite() override
+    {
+        return m_write_available;
+    }
     size_t write(uint8_t value) override
     {
         size_t write_count = 0;
@@ -83,8 +89,7 @@ class ArdPacketSerialMock : public ArdPacketStreamInterface
         m_write_offset = 0;
     }
 
-public:
-
+   public:
     static constexpr int kReadBufferSize = 64;
     static constexpr int kWriteBufferSize = 64;
 
@@ -120,10 +125,10 @@ static size_t ArdPacketGetPacketSizeUtility(const ArdPacketConfig &config, const
 }
 
 // Create and configure
-static void test_packet_configure_pass(void) {
-
+static void test_packet_configure_pass(void)
+{
     ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface&>(serial));
+    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
 
     ArdPacketConfig config;
     config.crc = false;
@@ -152,14 +157,13 @@ static void test_packet_configure_pass(void) {
     config.message_type_bytes = 4;
     status = packet.Configure(config);
     TEST_ASSERT_EQUAL(kArdPacketConfigSuccess, status);
-
 }
 
 // Fail create and configure payload size
-static void test_packet_configure_fail_payload_bytes(void) {
-
+static void test_packet_configure_fail_payload_bytes(void)
+{
     ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface&>(serial));
+    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
 
     ArdPacketConfig config;
     config.crc = false;
@@ -181,10 +185,10 @@ static void test_packet_configure_fail_payload_bytes(void) {
 }
 
 // Create and configure
-static void test_packet_configure_fail_message_type(void) {
-
+static void test_packet_configure_fail_message_type(void)
+{
     ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface&>(serial));
+    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
 
     ArdPacketConfig config;
     config.crc = false;
@@ -203,14 +207,13 @@ static void test_packet_configure_fail_message_type(void) {
     config.message_type_bytes = 5;
     status = packet.Configure(config);
     TEST_ASSERT_EQUAL(kArdPacketConfigInvalidMessageTypeBytes, status);
-
 }
 
 // Fail create and configure max payload size
-static void test_packet_configure_fail_max_payload(void) {
-
+static void test_packet_configure_fail_max_payload(void)
+{
     ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface&>(serial));
+    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
 
     ArdPacketConfig config;
     config.crc = false;
@@ -229,10 +232,10 @@ static void test_packet_configure_fail_max_payload(void) {
 }
 
 // Write and read sample message
-static void test_packet_pass_write_read(void) {
-
+static void test_packet_pass_write_read(void)
+{
     ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface&>(serial));
+    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
 
     // configure
     ArdPacketConfig config;
@@ -246,11 +249,7 @@ static void test_packet_pass_write_read(void) {
 
     // input message
     const char *input_test_message = TEST_MESSAGE_STRING;
-    const ArdPacketPayloadInfo input_info =
-    {
-        .message_type = 0,
-        .payload_size = sizeof(TEST_MESSAGE_STRING)
-    };
+    const ArdPacketPayloadInfo input_info = {.message_type = 0, .payload_size = sizeof(TEST_MESSAGE_STRING)};
 
     // sizes
     const size_t header_size = ArdPacketGetHeaderSizeUtility(config);
@@ -259,7 +258,8 @@ static void test_packet_pass_write_read(void) {
 
     // write
     serial.MakeAvailableForWrite(packet_size);
-    const eArdPacketStatus send_status = packet.SendPayload(input_info, reinterpret_cast<const uint8_t*>(input_test_message));
+    const eArdPacketStatus send_status =
+        packet.SendPayload(input_info, reinterpret_cast<const uint8_t *>(input_test_message));
     TEST_ASSERT_EQUAL(kArdPacketStatusDone, send_status);
     TEST_ASSERT_EQUAL_STRING(TEST_MESSAGE_STRING, &serial.m_write_data[header_size]);
 
@@ -272,11 +272,10 @@ static void test_packet_pass_write_read(void) {
     const eArdPacketStatus recv_status = packet.ReceivePayload(input_info.payload_size, receive_info, receive_buffer);
     TEST_ASSERT_EQUAL(kArdPacketStatusDone, recv_status);
     TEST_ASSERT_EQUAL_STRING(TEST_MESSAGE_STRING, receive_buffer);
-
 }
 
-int main(void) {
-
+int main(void)
+{
     UNITY_BEGIN();
 
     // Run Tests

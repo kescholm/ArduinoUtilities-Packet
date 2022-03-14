@@ -16,8 +16,8 @@
 // -----------
 
 // Create and configure
-static void test_packet_configure_pass(void) {
-
+static void test_packet_configure_pass(void)
+{
     ArdPacketSerial serial;
     ArdPacket packet(dynamic_cast<ArdPacketStreamInterface&>(serial));
 
@@ -37,7 +37,7 @@ static void test_packet_configure_pass(void) {
     TEST_ASSERT_EQUAL(kArdPacketConfigSuccess, status);
 
     config.payload_size_bytes = 4;
-    config.max_payload_size = UINT32_MAX;
+    config.max_payload_size = (SIZE_MAX < UINT32_MAX ? SIZE_MAX : UINT32_MAX);
     status = packet.Configure(config);
     TEST_ASSERT_EQUAL(kArdPacketConfigSuccess, status);
 
@@ -48,12 +48,11 @@ static void test_packet_configure_pass(void) {
     config.message_type_bytes = 4;
     status = packet.Configure(config);
     TEST_ASSERT_EQUAL(kArdPacketConfigSuccess, status);
-
 }
 
 // Fail create and configure payload size
-static void test_packet_configure_fail_payload_bytes(void) {
-
+static void test_packet_configure_fail_payload_bytes(void)
+{
     ArdPacketSerial serial;
     ArdPacket packet(dynamic_cast<ArdPacketStreamInterface&>(serial));
 
@@ -77,8 +76,8 @@ static void test_packet_configure_fail_payload_bytes(void) {
 }
 
 // Create and configure
-static void test_packet_configure_fail_message_type(void) {
-
+static void test_packet_configure_fail_message_type(void)
+{
     ArdPacketSerial serial;
     ArdPacket packet(dynamic_cast<ArdPacketStreamInterface&>(serial));
 
@@ -99,12 +98,11 @@ static void test_packet_configure_fail_message_type(void) {
     config.message_type_bytes = 5;
     status = packet.Configure(config);
     TEST_ASSERT_EQUAL(kArdPacketConfigInvalidMessageTypeBytes, status);
-
 }
 
 // Fail create and configure max payload size
-static void test_packet_configure_fail_max_payload(void) {
-
+static void test_packet_configure_fail_max_payload(void)
+{
     ArdPacketSerial serial;
     ArdPacket packet(dynamic_cast<ArdPacketStreamInterface&>(serial));
 
@@ -130,7 +128,7 @@ void setup()
     // if board doesn't support software reset via Serial.DTR/RTS
     delay(2000);
 
-    UNITY_BEGIN();  // IMPORTANT LINE!
+    UNITY_BEGIN(); // IMPORTANT LINE!
 
     // begin serial
     Serial.begin(ARD_SERIAL_BAUDRATE);
@@ -148,7 +146,6 @@ void setup()
     // ----
 
     UNITY_END();
-
 }
 
 void loop()

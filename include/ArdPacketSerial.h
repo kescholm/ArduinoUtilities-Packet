@@ -12,18 +12,36 @@ class ArdPacketSerial : public ArdPacketStreamInterface
     ArdPacketSerial() : m_serial(Serial) {}
     ArdPacketSerial(HardwareSerial &serial) : m_serial(serial) {}
 
-    int available() override { return m_serial.available(); }
-    int read() override { return m_serial.read(); }
+    int available() override
+    {
+        return m_serial.available();
+    }
+    int read() override
+    {
+        return m_serial.read();
+    }
 
-    #if defined(__AVR__)
+#if defined(__AVR__)
     size_t read(uint8_t *buffer, size_t size) override;
-    #else
-    size_t read(uint8_t *buffer, size_t size) override { return m_serial.read(buffer, size); }
-    #endif
+#else
+    size_t read(uint8_t *buffer, size_t size) override
+    {
+        return m_serial.read(buffer, size);
+    }
+#endif
 
-    int availableForWrite() override { return m_serial.availableForWrite(); }
-    size_t write(uint8_t value) override { return m_serial.write(value); }
-    size_t write(const uint8_t *buffer, size_t size) override { return m_serial.write(buffer, size); }
+    int availableForWrite() override
+    {
+        return m_serial.availableForWrite();
+    }
+    size_t write(uint8_t value) override
+    {
+        return m_serial.write(value);
+    }
+    size_t write(const uint8_t *buffer, size_t size) override
+    {
+        return m_serial.write(buffer, size);
+    }
 
    private:
     HardwareSerial &m_serial;

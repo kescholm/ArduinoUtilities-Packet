@@ -3,8 +3,8 @@
 #ifndef ARD_PACKET_H
 #define ARD_PACKET_H
 
-#include <cstdint>
-#include <cstring>
+#include <stdint.h>
+#include <string.h>
 
 #include "ArdCrc.h"
 
@@ -109,7 +109,6 @@ class ArdPacketStreamInterface
     virtual int availableForWrite() = 0;
     virtual size_t write(uint8_t value) = 0;
     virtual size_t write(const uint8_t *buffer, size_t size) = 0;
-
 };
 
 class ArdPacket
@@ -157,12 +156,18 @@ class ArdPacket
     /**
      * @brief Reset read state
      */
-    void ResetRead() { ResetState(m_read); }
+    void ResetRead()
+    {
+        ResetState(m_read);
+    }
 
     /**
      * @brief Reset write state
      */
-    void ResetWrite() { ResetState(m_write); }
+    void ResetWrite()
+    {
+        ResetState(m_write);
+    }
 
     // /**
     //  * @brief Copy payload into packet buffer
@@ -175,7 +180,6 @@ class ArdPacket
     //                                    size_t max_packet_size, uint8_t *packet, size_t &packet_size) const;
 
    private:
-
     static constexpr size_t kArdPacketCrcBytes = 2;
     static constexpr size_t kArdPacketMaxPayloadSizeBytes = 4;
     static constexpr size_t kArdPacketMaxMessageTypeBytes = 4;
@@ -306,7 +310,8 @@ inline eArdPacketConfigStatus ArdPacket::Configure(const ArdPacketConfig &config
     return status;
 }
 
-inline eArdPacketStatus ArdPacket::ReceivePayload(const size_t max_payload_size, ArdPacketPayloadInfo &info, uint8_t *payload)
+inline eArdPacketStatus ArdPacket::ReceivePayload(const size_t max_payload_size, ArdPacketPayloadInfo &info,
+                                                  uint8_t *payload)
 {
     eArdPacketStatus status = kArdPacketStatusStart;
     const int read_size = m_stream.available();
@@ -513,13 +518,8 @@ inline eArdPacketStatus ArdPacket::SendPayload(const ArdPacketPayloadInfo &info,
     return status;
 }
 
-
-
-
-
 // Private inline methods
 // ----------------------
-
 
 inline void ArdPacket::ResetState(ArdPacketStateData &data_state)
 {
@@ -620,8 +620,7 @@ eArdPacketStatus ArdPacket::ProcessReadStatePayloadSize(const size_t max_payload
         // host endian copy (TODO: ensure consistent endianness)
         memcpy(&info.payload_size, read_data, m_config.payload_size_bytes);
         // check payload size
-        if ((info.payload_size == 0) ||
-            (info.payload_size > m_config.max_payload_size) ||
+        if ((info.payload_size == 0) || (info.payload_size > m_config.max_payload_size) ||
             (max_payload_size < info.payload_size))
         {
             status = kArdPacketStatusInvalidPayloadSize;
@@ -793,7 +792,7 @@ eArdPacketStatus ArdPacket::ProcessWriteStateHeaderCrc()
     // finalize crc
     m_write.crc = crc_finalize(m_write.crc);
     // write
-    m_stream.write(reinterpret_cast<uint8_t*>(&m_write.crc), kArdPacketCrcBytes);
+    m_stream.write(reinterpret_cast<uint8_t *>(&m_write.crc), kArdPacketCrcBytes);
     // reset crc
     m_write.crc = crc_init();
     // advance state
@@ -830,7 +829,7 @@ eArdPacketStatus ArdPacket::ProcessWriteStatePayloadCrc()
     // finalize crc
     m_write.crc = crc_finalize(m_write.crc);
     // write
-    m_stream.write(reinterpret_cast<uint8_t*>(&m_write.crc), kArdPacketCrcBytes);
+    m_stream.write(reinterpret_cast<uint8_t *>(&m_write.crc), kArdPacketCrcBytes);
     // advance state
     m_write.state = kArdPacketStateDone;
     return kArdPacketStatusDone;

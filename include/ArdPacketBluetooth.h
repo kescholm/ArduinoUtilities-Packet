@@ -10,20 +10,32 @@
 class ArdPacketBluetooth : public ArdPacketStreamInterface
 {
    public:
-    explicit ArdPacketBluetooth(BluetoothSerial &serial) : m_serial(serial) {}
+    explicit ArdPacketBluetooth(BluetoothSerial &bt) : m_bt(bt) {}
 
-    int available() override { return m_serial.available(); }
-    int read() override { return m_serial.read(); }
+    int available() override
+    {
+        return m_bt.available();
+    }
+    int read() override
+    {
+        return m_bt.read();
+    }
     size_t read(uint8_t *buffer, size_t size) override;
 
     int availableForWrite() override;
-    size_t write(uint8_t value) override { return m_serial.write(value); }
-    size_t write(const uint8_t *buffer, size_t size) override { return m_serial.write(buffer, size); }
+    size_t write(uint8_t value) override
+    {
+        return m_bt.write(value);
+    }
+    size_t write(const uint8_t *buffer, size_t size) override
+    {
+        return m_bt.write(buffer, size);
+    }
 
     void SetAvailableForWrite(int size);
 
    private:
-    BluetoothSerial &m_serial;
+    BluetoothSerial &m_bt;
     int m_available_for_write = 64;
 };
 
@@ -33,7 +45,7 @@ inline size_t ArdPacketBluetooth::read(uint8_t *buffer, const size_t size)
     int read_byte = 0;
     while (read_byte >= 0 && read_index < size)
     {
-        read_byte = m_serial.read();
+        read_byte = m_bt.read();
         if (read_byte >= 0)
         {
             buffer[read_index] = static_cast<uint8_t>(read_byte);
