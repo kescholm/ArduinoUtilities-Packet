@@ -6,8 +6,6 @@
 #include <cstdint>
 #include <cstring>
 
-#include <Arduino.h>
-
 #include "ArdCrc.h"
 
 /**
@@ -51,7 +49,6 @@ struct ArdPacketConfig
  */
 struct ArdPacketPayloadInfo
 {
-
     /**
      * @brief message type
      *
@@ -76,49 +73,49 @@ enum eArdPacketConfigStatus
 };
 
 /**
- * @brief Status of ReceivePayload
+ * @brief Status of receiving or sending payload
  */
-enum eArdPacketReadStatus
+enum eArdPacketStatus
 {
-    kArdPacketRead = 0,
-    kArdPacketReadNotConfigured,
-    kArdPacketReadNotAvailable,
-    kArdPacketReadFailed,
-    kArdPacketReadNoDelimiter,
-    kArdPacketReadInvalidPayloadSize,
-    kArdPacketReadHeaderInProgress,
-    kArdPacketReadHeaderCrcFailed,
-    kArdPacketReadPayloadInProgress,
-    kArdPacketReadPayloadCrcFailed,
-    kArdPacketReadPayloadReady
+    kArdPacketStatusStart = 0,
+    kArdPacketStatusNotConfigured,
+    kArdPacketStatusNotAvailable,
+    kArdPacketStatusNotEnoughAvailable,
+    kArdPacketStatusNoDelimiter,
+    kArdPacketStatusInvalidPayloadSize,
+    kArdPacketStatusReadFailed,
+    kArdPacketStatusCrcFailed,
+    kArdPacketStatusHeaderInProgress,
+    kArdPacketStatusPayloadInProgress,
+    kArdPacketStatusDone
 };
 
 /**
- * @brief Status of GetPayload
+ * @brief Abstract class compatible with Arduino's @c Serial interface.
+ *
+ * The interface should allow for non-blocking write the same way
+ * Arduino's @c Serial interface is implemented as described here:
+ * [https://www.arduino.cc/reference/en/language/functions/communication/serial/write/](https://www.arduino.cc/reference/en/language/functions/communication/serial/write/)
  */
-// enum eArdPacketPayloadStatus
-// {
-//     kArdPacketPayloadSuccess = 0,
-//     kArdPacketPayloadNotReady,
-//     kArdPacketPayloadExceedsOuputSize
-// };
-
-/**
- * @brief Status of GeneratePacketHeader
- */
-enum eArdPacketGenerateStatus
+class ArdPacketStreamInterface
 {
-    kArdPacketGenerateSuccess = 0,
-    kArdPacketGenerateInvalidMessageType,
-    kArdPacketGenerateExceedsMaxPayloadSize,
-    kArdPacketGenerateExceedsMaxPacketSize
+   public:
+    ArdPacketStreamInterface() = default;
+
+    virtual int available() = 0;
+    virtual int read() = 0;
+    virtual size_t read(uint8_t *buffer, size_t size) = 0;
+
+    virtual int availableForWrite() = 0;
+    virtual size_t write(uint8_t value) = 0;
+    virtual size_t write(const uint8_t *buffer, size_t size) = 0;
+
 };
 
 class ArdPacket
 {
    public:
-    ArdPacket() = default;
-    explicit ArdPacket(Stream &stream) : m_stream(stream) {}
+    explicit ArdPacket(ArdPacketStreamInterface &stream) : m_stream(stream) {}
 
     /**
      * @brief Configure packet
@@ -129,52 +126,63 @@ class ArdPacket
     eArdPacketConfigStatus Configure(const ArdPacketConfig &config);
 
     /**
-     * @brief Ingest data chunk from buffer
+     * @brief Receive payload from data stream
      *
-     * @param data
-     * @param size
+     * @param max_payload_size
+     * @param payload
+     * @param info
      * @return
      */
-    eArdPacketReadStatus ReceivePayload(size_t max_payload_size, uint8_t *payload, ArdPacketPayloadInfo &info);
+    eArdPacketStatus ReceivePayload(size_t max_payload_size, ArdPacketPayloadInfo &info, uint8_t *payload);
+
+    /**
+     * @brief Write payload to data stream
+     *
+     * @param message_type
+     * @param payload_size
+     * @param payload
+     * @return
+     */
+    eArdPacketStatus SendPayload(const ArdPacketPayloadInfo &info, const uint8_t *payload);
 
     /**
      * @brief Reset state
      */
-    void ResetReadState();
+    void Reset()
+    {
+        ResetRead();
+        ResetWrite();
+    }
 
     /**
-     * @brief Reset state
+     * @brief Reset read state
      */
-    void ResetWriteState();
+    void ResetRead() { ResetState(m_read); }
+
+    /**
+     * @brief Reset write state
+     */
+    void ResetWrite() { ResetState(m_write); }
 
     // /**
-    //  * @brief Copy prepared payload to external buffer
+    //  * @brief Copy payload into packet buffer
     //  *
     //  * @param buf
     //  * @param max_size
     //  * @return
     //  */
-    // eArdPacketPayloadStatus GetPayload(size_t payload_max_size, uint8_t *payload, size_t &payload_size,
-    //                                    uint32_t &message_type);
-
-    /**
-     * @brief Copy payload into packet buffer
-     *
-     * @param buf
-     * @param max_size
-     * @return
-     */
-    eArdPacketGenerateStatus GeneratePacketHeader(uint32_t message_type, size_t payload_size,
-                                                       const uint8_t *payload, size_t max_packet_size,
-                                                       uint8_t *packet, size_t &packet_size) const;
+    // eArdPacketStatus WritePacketHeader(uint32_t message_type, size_t payload_size, const uint8_t *payload,
+    //                                    size_t max_packet_size, uint8_t *packet, size_t &packet_size) const;
 
    private:
 
+    static constexpr size_t kArdPacketCrcBytes = 2;
     static constexpr size_t kArdPacketMaxPayloadSizeBytes = 4;
     static constexpr size_t kArdPacketMaxMessageTypeBytes = 4;
-    static constexpr size_t kArdPacketMaxHeaderSize = 1 + kArdPacketMaxPayloadSizeBytes + kArdPacketMaxMessageTypeBytes + 2 * sizeof(crc_t);
+    static constexpr size_t kArdPacketMaxHeaderSize =
+        1 + kArdPacketMaxPayloadSizeBytes + kArdPacketMaxMessageTypeBytes + 2 * kArdPacketCrcBytes;
 
-    enum eArdPacketReadState
+    enum eArdPacketState
     {
         kArdPacketStateDelimiter,
         kArdPacketStateMessageType,
@@ -182,47 +190,44 @@ class ArdPacket
         kArdPacketStateHeaderCrc,
         kArdPacketStatePayload,
         kArdPacketStatePayloadCrc,
-        kArdPacketStatePrepared
+        kArdPacketStateDone
     };
 
-    enum eArdPacketWriteState
+    struct ArdPacketStateData
     {
-        kArdPacketWriteStateHeader,
-        kArdPacketWriteStatePayload,
-        kArdPacketWriteStatePrepared
+        eArdPacketState state = kArdPacketStateDelimiter;
+        size_t available = 0;
+        size_t payload_index = 0;
+        crc_t crc = 0;
     };
 
-    eArdPacketReadStatus ProcessReadStateDelimiter();
-    eArdPacketReadStatus ProcessReadStateCrc();
-    eArdPacketReadStatus ProcessReadStateMessageType(ArdPacketPayloadInfo &info);
-    eArdPacketReadStatus ProcessReadStatePayloadSize(ArdPacketPayloadInfo &info);
-    eArdPacketReadStatus ProcessReadStatePayload(const ArdPacketPayloadInfo &info, size_t max_payload_size, uint8_t *payload);
+    static void ResetState(ArdPacketStateData &state);
+
+    eArdPacketStatus ProcessReadStateDelimiter();
+    eArdPacketStatus ProcessReadStateHeaderCrc();
+    eArdPacketStatus ProcessReadStateMessageType(ArdPacketPayloadInfo &info);
+    eArdPacketStatus ProcessReadStatePayloadSize(size_t max_payload_size, ArdPacketPayloadInfo &info);
+    eArdPacketStatus ProcessReadStatePayload(const ArdPacketPayloadInfo &info, uint8_t *payload);
+    eArdPacketStatus ProcessReadStatePayloadCrc();
+
+    eArdPacketStatus ProcessWriteStateDelimiter();
+    eArdPacketStatus ProcessWriteStateHeaderCrc();
+    eArdPacketStatus ProcessWriteStateMessageType(const ArdPacketPayloadInfo &info);
+    eArdPacketStatus ProcessWriteStatePayloadSize(const ArdPacketPayloadInfo &info);
+    eArdPacketStatus ProcessWriteStatePayload(const ArdPacketPayloadInfo &info, const uint8_t *payload);
+    eArdPacketStatus ProcessWriteStatePayloadCrc();
 
     // configuration
     ArdPacketConfig m_config = {};
-    size_t m_max_message_type = 0;
+    size_t m_max_message_type_value = 0;
 
-    // read data
-    eArdPacketReadState m_read_state = kArdPacketStateDelimiter;
-    size_t m_read_payload_index = 0;
-    crc_t m_read_crc = 0;
-
-    // write data
-    eArdPacketWriteState m_write_state = kArdPacketWriteStateHeader;
-    size_t m_write_payload_index = 0;
-    crc_t m_write_crc = 0;
+    // read and write state
+    ArdPacketStateData m_read = {};
+    ArdPacketStateData m_write = {};
 
     // stream interface
-    Stream &m_stream = Serial;
+    ArdPacketStreamInterface &m_stream;
 };
-
-// size_t ard_serial_write_noblock(const uint8_t * buf, uint16_t len)
-// {
-//     const uint16_t bytes_available = Serial.availableForWrite();
-//     const uint16_t bytes_to_write = (len < bytes_available ? len : bytes_available);
-//     return Serial.write(buf, bytes_to_write);
-// }
-
 
 // inline methods
 
@@ -249,8 +254,8 @@ inline eArdPacketConfigStatus ArdPacket::Configure(const ArdPacketConfig &config
         header_and_crc_size = header_size;
         if (config.crc)
         {
-            header_size += sizeof(crc_t);
-            header_and_crc_size += 2 * sizeof(crc_t);
+            header_size += kArdPacketCrcBytes;
+            header_and_crc_size += 2 * kArdPacketCrcBytes;
         }
     }
 
@@ -267,7 +272,7 @@ inline eArdPacketConfigStatus ArdPacket::Configure(const ArdPacketConfig &config
         }
         else if (config.payload_size_bytes == 4)
         {
-            max_payload_limit = UINT32_MAX;
+            max_payload_limit = (UINT32_MAX < SIZE_MAX ? UINT32_MAX : SIZE_MAX);
         }
 
         if (config.max_payload_size > max_payload_limit)
@@ -281,365 +286,567 @@ inline eArdPacketConfigStatus ArdPacket::Configure(const ArdPacketConfig &config
         // max message type
         if (config.message_type_bytes == 1)
         {
-            m_max_message_type = UINT8_MAX;
+            m_max_message_type_value = UINT8_MAX;
         }
         else if (config.message_type_bytes == 2)
         {
-            m_max_message_type = UINT16_MAX;
+            m_max_message_type_value = UINT16_MAX;
         }
         else if (config.message_type_bytes == 4)
         {
-            m_max_message_type = UINT32_MAX;
+            m_max_message_type_value = (UINT32_MAX < SIZE_MAX ? UINT32_MAX : SIZE_MAX);
         }
 
         m_config = config;
 
-        ResetReadState();
-        ResetWriteState();
+        ResetState(m_read);
+        ResetState(m_write);
     }
 
     return status;
 }
 
-inline void ArdPacket::ResetReadState()
+inline eArdPacketStatus ArdPacket::ReceivePayload(const size_t max_payload_size, ArdPacketPayloadInfo &info, uint8_t *payload)
 {
-    m_read_state = kArdPacketStateDelimiter;
-    m_read_payload_index = 0;
-}
-
-inline void ArdPacket::ResetWriteState()
-{
-    m_write_state = kArdPacketWriteStateHeader;
-    m_write_payload_index = 0;
-}
-
-inline eArdPacketReadStatus ArdPacket::ProcessReadStateDelimiter()
-{
-    eArdPacketReadStatus status = kArdPacketRead;
+    eArdPacketStatus status = kArdPacketStatusStart;
     const int read_size = m_stream.available();
-    if (read_size <= 0)
-    {
-        status = kArdPacketReadNotAvailable;
-    }
-    else
-    {
-        bool found_delimiter = false;
-        bool read_failed = false;
-        for (size_t k = 0; k < read_size && (!found_delimiter) && (!read_failed); ++k)
-        {
-            const int read_byte = m_stream.read();
-            if (read_byte < 0)
-            {
-                read_failed = true;
-            }
-            else if (static_cast<uint8_t>(read_byte) == m_config.delimiter)
-            {
-                found_delimiter = true;
-            }
-        }
-
-        if (found_delimiter)
-        {
-            status = kArdPacketReadHeaderInProgress;
-            m_read_state = kArdPacketStateMessageType;
-            if (m_config.crc)
-            {
-                // initial crc for header
-                m_read_crc = crc_init();
-                m_read_crc = crc_update(m_read_crc, &m_config.delimiter, 1);
-            }
-        }
-        else if (read_failed)
-        {
-            status = kArdPacketReadFailed;
-        }
-        else
-        {
-            status = kArdPacketReadNoDelimiter;
-        }
-    }
-
-    return status;
-}
-
-inline eArdPacketReadStatus ArdPacket::ProcessReadStateMessageType(ArdPacketPayloadInfo &info)
-{
-    eArdPacketReadStatus status = kArdPacketRead;
-    const int read_size = m_stream.available();
-    if (read_size < m_config.message_type_bytes)
-    {
-        status = kArdPacketReadNotAvailable;
-    }
-    else
-    {
-        uint8_t read_data[kArdPacketMaxMessageTypeBytes];
-        bool read_failed = false;
-        for (size_t k = 0; k < m_config.message_type_bytes && (!read_failed); ++k)
-        {
-            const int read_byte = m_stream.read();
-            if (read_byte < 0)
-            {
-                read_failed = true;
-            }
-            else
-            {
-                read_data[k] = static_cast<uint8_t>(read_byte);
-            }
-        }
-
-        if (read_failed)
-        {
-            status = kArdPacketReadFailed;
-            ResetReadState();
-        }
-        else
-        {
-            if (m_config.crc)
-            {
-                m_read_crc = crc_update(m_read_crc, read_data, m_config.message_type_bytes);
-            }
-            // copy message type from data
-            // host endian copy (TODO: ensure consistent endianness)
-            info.message_type = 0;
-            memcpy(&info.message_type, read_data, m_config.message_type_bytes);
-            // advance state
-            status = kArdPacketReadHeaderInProgress;
-            m_read_state = kArdPacketStatePayloadSize;
-        }
-    }
-    return status;
-}
-
-eArdPacketReadStatus ArdPacket::ProcessReadStatePayloadSize(ArdPacketPayloadInfo &info)
-{
-    eArdPacketReadStatus status = kArdPacketRead;
-    const int read_size = m_stream.available();
-    if (read_size < m_config.payload_size_bytes)
-    {
-        status = kArdPacketReadNotAvailable;
-    }
-    else
-    {
-        uint8_t read_data[kArdPacketMaxPayloadSizeBytes];
-        bool read_failed = false;
-        for (size_t k = 0; k < m_config.payload_size_bytes && (!read_failed); ++k)
-        {
-            const int read_byte = m_stream.read();
-            if (read_byte < 0)
-            {
-                read_failed = true;
-            }
-            else
-            {
-                read_data[k] = static_cast<uint8_t>(read_byte);
-            }
-        }
-
-
-        if (read_failed)
-        {
-            status = kArdPacketReadFailed;
-            ResetReadState();
-        }
-        else
-        {
-            if (m_config.crc)
-            {
-                m_read_crc = crc_update(m_read_crc, read_data, m_config.payload_size_bytes);
-            }
-            // copy from data to packet
-            // host endian copy (TODO: ensure consistent endianness)
-            memcpy(&info.payload_size, read_data, m_config.payload_size_bytes);
-            // check payload size
-            if (info.payload_size == 0 || (info.payload_size > m_config.max_payload_size))
-            {
-                status = kArdPacketReadInvalidPayloadSize;
-                ResetReadState();
-            }
-            else
-            {
-                // advance state
-                status = (m_config.crc ? kArdPacketReadHeaderInProgress : kArdPacketReadPayloadInProgress);
-                m_read_state = (m_config.crc ? kArdPacketStateHeaderCrc : kArdPacketStatePayload);
-            }
-        }
-    }
-    return status;
-}
-
-eArdPacketReadStatus ArdPacket::ProcessReadStatePayload(const ArdPacketPayloadInfo &info, const size_t max_payload_size, uint8_t *payload)
-{
-    eArdPacketReadStatus status = kArdPacketRead;
-    const int read_size = m_stream.available();
-    if (read_size <= 0)
-    {
-        status = kArdPacketReadNotAvailable;
-    }
-    else if (max_payload_size < info.payload_size)
-    {
-        status = kArdPacketReadInvalidPayloadSize;
-        ResetReadState();
-    }
-    else
-    {
-        status = kArdPacketReadPayloadInProgress;
-        const size_t remaining_payload = info.payload_size - m_read_payload_index;
-        const size_t bytes_to_read = (remaining_payload < read_size ? remaining_payload : read_size);
-        bool read_failed = false;
-        for (size_t k = 0; k < bytes_to_read && (!read_failed); ++k)
-        {
-            const int read_byte = m_stream.read();
-            if (read_byte < 0)
-            {
-                read_failed = true;
-            }
-            else
-            {
-                payload[m_read_payload_index] = static_cast<uint8_t>(read_byte);
-                m_read_payload_index++;
-            }
-        }
-
-        if (read_failed)
-        {
-            status = kArdPacketReadFailed;
-            ResetReadState();
-        }
-        else if (m_read_payload_index == info.payload_size)
-        {
-            status = (m_config.crc ? kArdPacketReadPayloadInProgress : kArdPacketReadPayloadReady);
-            m_read_state = (m_config.crc ? kArdPacketStatePayloadCrc : kArdPacketStatePrepared);
-        }
-    }
-    return status;
-}
-
-eArdPacketReadStatus ArdPacket::ProcessReadStateCrc()
-{
-
-    eArdPacketReadStatus status = kArdPacketRead;
-    const int read_size = m_stream.available();
-    if (read_size < sizeof(crc_t))
-    {
-        status = kArdPacketReadNotAvailable;
-    }
-    else
-    {
-        uint8_t read_data[sizeof(crc_t)];
-        bool read_failed = false;
-        for (size_t k = 0; k < sizeof(crc_t) && (!read_failed); ++k)
-        {
-            const int read_byte = m_stream.read();
-            if (read_byte < 0)
-            {
-                read_failed = true;
-            }
-            else
-            {
-                read_data[k] = static_cast<uint8_t>(read_byte);
-            }
-        }
-
-        if (read_failed)
-        {
-            status = kArdPacketReadFailed;
-            ResetReadState();
-        }
-        else
-        {
-            // crc from data
-            m_read_crc = crc_update(m_read_crc, read_data, sizeof(crc_t));
-            // finalize and test
-            m_read_crc = crc_finalize(m_read_crc);
-            // check payload crc
-            if (m_read_crc == 0)
-            {
-                // passed crc
-                status = kArdPacketReadPayloadInProgress;
-                m_read_state = kArdPacketStatePayload;
-                // initial crc for payload
-                m_read_crc = crc_init();
-            }
-            else
-            {
-                status = kArdPacketReadHeaderCrcFailed;
-                ResetReadState();
-            }
-        }
-    }
-    return status;
-}
-
-inline eArdPacketReadStatus ArdPacket::ReceivePayload(const size_t max_payload_size, uint8_t *payload, ArdPacketPayloadInfo &info)
-{
-    eArdPacketReadStatus status = kArdPacketRead;
     if (m_config.max_payload_size == 0)
     {
-        status = kArdPacketReadNotConfigured;
+        status = kArdPacketStatusNotConfigured;
+    }
+    else if (read_size <= 0)
+    {
+        status = kArdPacketStatusNotAvailable;
     }
     else
     {
-        // state machine
-        switch (m_read_state)
+        m_read.available = static_cast<size_t>(read_size);
+        bool continue_read = true;
+        while (m_read.available > 0 && continue_read)
         {
-            case kArdPacketStateDelimiter:
+            // state machine
+            switch (m_read.state)
             {
-                status = ProcessReadStateDelimiter();
-                break;
+                case kArdPacketStateDelimiter:
+                {
+                    status = ProcessReadStateDelimiter();
+                    break;
+                }
+                case kArdPacketStateMessageType:
+                {
+                    if (m_read.available < m_config.message_type_bytes)
+                    {
+                        status = kArdPacketStatusNotEnoughAvailable;
+                    }
+                    else
+                    {
+                        status = ProcessReadStateMessageType(info);
+                    }
+                    break;
+                }
+                case kArdPacketStatePayloadSize:
+                {
+                    if (m_read.available < m_config.payload_size_bytes)
+                    {
+                        status = kArdPacketStatusNotEnoughAvailable;
+                    }
+                    else
+                    {
+                        status = ProcessReadStatePayloadSize(max_payload_size, info);
+                    }
+                    break;
+                }
+                case kArdPacketStateHeaderCrc:
+                {
+                    if (m_read.available < kArdPacketCrcBytes)
+                    {
+                        status = kArdPacketStatusNotEnoughAvailable;
+                    }
+                    else
+                    {
+                        status = ProcessReadStateHeaderCrc();
+                    }
+                    break;
+                }
+                case kArdPacketStatePayload:
+                {
+                    status = ProcessReadStatePayload(info, payload);
+                    break;
+                }
+                case kArdPacketStatePayloadCrc:
+                {
+                    if (m_read.available < kArdPacketCrcBytes)
+                    {
+                        status = kArdPacketStatusNotEnoughAvailable;
+                    }
+                    else
+                    {
+                        status = ProcessReadStatePayloadCrc();
+                    }
+                    break;
+                }
+                case kArdPacketStateDone:
+                {
+                    status = kArdPacketStatusDone;
+                    break;
+                }
+                default:
+                {
+                    status = kArdPacketStatusStart;
+                    ResetState(m_read);
+                    break;
+                }
             }
-            case kArdPacketStateMessageType:
-            {
-                status = ProcessReadStateMessageType(info);
-                break;
-            }
-            case kArdPacketStatePayloadSize:
-            {
-                status = ProcessReadStatePayloadSize(info);
-                break;
-            }
-            case kArdPacketStateHeaderCrc:
-            {
-                status = ProcessReadStateCrc();
-                break;
-            }
-            case kArdPacketStatePayload:
-            {
-                status = ProcessReadStatePayload(info, max_payload_size, payload);
-                break;
-            }
-            case kArdPacketStatePayloadCrc:
-            {
-                status = ProcessReadStateCrc();
-                break;
-            }
-            case kArdPacketStatePrepared:
-            {
-                status = kArdPacketReadPayloadReady;
-                break;
-            }
-            default:
-            {
-                status = kArdPacketRead;
-                ResetReadState();
-                break;
-            }
+            continue_read = (status == kArdPacketStatusHeaderInProgress || status == kArdPacketStatusPayloadInProgress);
         }
     }
 
     return status;
+}
+
+inline eArdPacketStatus ArdPacket::SendPayload(const ArdPacketPayloadInfo &info, const uint8_t *payload)
+{
+    eArdPacketStatus status = kArdPacketStatusStart;
+    const int write_size = m_stream.availableForWrite();
+    if (m_config.max_payload_size == 0)
+    {
+        status = kArdPacketStatusNotConfigured;
+    }
+    else if (write_size <= 0)
+    {
+        status = kArdPacketStatusNotAvailable;
+    }
+    else if (info.payload_size == 0)
+    {
+        status = kArdPacketStatusNotEnoughAvailable;
+        ResetState(m_write);
+    }
+    else if (info.payload_size > m_config.max_payload_size)
+    {
+        status = kArdPacketStatusInvalidPayloadSize;
+        ResetState(m_write);
+    }
+    else
+    {
+        m_write.available = static_cast<size_t>(write_size);
+        bool continue_write = true;
+        while (m_write.available > 0 && continue_write)
+        {
+            // state machine
+            switch (m_write.state)
+            {
+                case kArdPacketStateDelimiter:
+                {
+                    status = ProcessWriteStateDelimiter();
+                    break;
+                }
+                case kArdPacketStateMessageType:
+                {
+                    if (m_write.available < m_config.message_type_bytes)
+                    {
+                        status = kArdPacketStatusNotEnoughAvailable;
+                    }
+                    else
+                    {
+                        status = ProcessWriteStateMessageType(info);
+                    }
+                    break;
+                }
+                case kArdPacketStatePayloadSize:
+                {
+                    if (m_write.available < m_config.payload_size_bytes)
+                    {
+                        status = kArdPacketStatusNotEnoughAvailable;
+                    }
+                    else
+                    {
+                        status = ProcessWriteStatePayloadSize(info);
+                    }
+                    break;
+                }
+                case kArdPacketStateHeaderCrc:
+                {
+                    if (m_write.available < kArdPacketCrcBytes)
+                    {
+                        status = kArdPacketStatusNotEnoughAvailable;
+                    }
+                    else
+                    {
+                        status = ProcessWriteStateHeaderCrc();
+                    }
+                    break;
+                }
+                case kArdPacketStatePayload:
+                {
+                    status = ProcessWriteStatePayload(info, payload);
+                    break;
+                }
+                case kArdPacketStatePayloadCrc:
+                {
+                    if (m_write.available < kArdPacketCrcBytes)
+                    {
+                        status = kArdPacketStatusNotEnoughAvailable;
+                    }
+                    else
+                    {
+                        status = ProcessWriteStatePayloadCrc();
+                    }
+                    break;
+                }
+                case kArdPacketStateDone:
+                {
+                    status = kArdPacketStatusDone;
+                    break;
+                }
+                default:
+                {
+                    status = kArdPacketStatusStart;
+                    ResetState(m_write);
+                    break;
+                }
+            }
+            continue_write =
+                (status == kArdPacketStatusHeaderInProgress || status == kArdPacketStatusPayloadInProgress);
+        }
+    }
+
+    return status;
+}
+
+
+
+
+
+// Private inline methods
+// ----------------------
+
+
+inline void ArdPacket::ResetState(ArdPacketStateData &data_state)
+{
+    data_state.state = kArdPacketStateDelimiter;
+    data_state.payload_index = 0;
+}
+
+// Read State Processing
+
+inline eArdPacketStatus ArdPacket::ProcessReadStateDelimiter()
+{
+    eArdPacketStatus status = kArdPacketStatusStart;
+    bool found_delimiter = false;
+    bool read_failed = false;
+    for (size_t k = 0; k < m_read.available && (!found_delimiter) && (!read_failed); ++k)
+    {
+        const int read_byte = m_stream.read();
+        if (read_byte < 0)
+        {
+            read_failed = true;
+        }
+        else if (static_cast<uint8_t>(read_byte) == m_config.delimiter)
+        {
+            found_delimiter = true;
+        }
+    }
+
+    if (read_failed)
+    {
+        status = kArdPacketStatusReadFailed;
+    }
+    else if (found_delimiter)
+    {
+        status = kArdPacketStatusHeaderInProgress;
+        m_read.state = kArdPacketStateMessageType;
+        if (m_config.crc)
+        {
+            // initial crc for header
+            m_read.crc = crc_init();
+            m_read.crc = crc_update(m_read.crc, &m_config.delimiter, 1);
+        }
+    }
+    else
+    {
+        status = kArdPacketStatusNoDelimiter;
+    }
+
+    return status;
+}
+
+inline eArdPacketStatus ArdPacket::ProcessReadStateMessageType(ArdPacketPayloadInfo &info)
+{
+    eArdPacketStatus status = kArdPacketStatusStart;
+
+    uint8_t read_data[kArdPacketMaxMessageTypeBytes];
+    const size_t bytes_read = m_stream.read(read_data, m_config.message_type_bytes);
+    if (bytes_read != m_config.message_type_bytes)
+    {
+        status = kArdPacketStatusReadFailed;
+        ResetState(m_read);
+    }
+    else
+    {
+        if (m_config.crc)
+        {
+            m_read.crc = crc_update(m_read.crc, read_data, m_config.message_type_bytes);
+        }
+        // copy message type from data
+        // host endian copy (TODO: ensure consistent endianness)
+        info.message_type = 0;
+        memcpy(&info.message_type, read_data, m_config.message_type_bytes);
+        // advance state
+        status = kArdPacketStatusHeaderInProgress;
+        m_read.state = kArdPacketStatePayloadSize;
+    }
+
+    return status;
+}
+
+eArdPacketStatus ArdPacket::ProcessReadStatePayloadSize(const size_t max_payload_size, ArdPacketPayloadInfo &info)
+{
+    eArdPacketStatus status = kArdPacketStatusStart;
+
+    uint8_t read_data[kArdPacketMaxPayloadSizeBytes];
+    const size_t bytes_read = m_stream.read(read_data, m_config.payload_size_bytes);
+    if (bytes_read != m_config.payload_size_bytes)
+    {
+        status = kArdPacketStatusReadFailed;
+        ResetState(m_read);
+    }
+    else
+    {
+        if (m_config.crc)
+        {
+            m_read.crc = crc_update(m_read.crc, read_data, m_config.payload_size_bytes);
+        }
+        // copy from data to packet
+        // host endian copy (TODO: ensure consistent endianness)
+        memcpy(&info.payload_size, read_data, m_config.payload_size_bytes);
+        // check payload size
+        if ((info.payload_size == 0) ||
+            (info.payload_size > m_config.max_payload_size) ||
+            (max_payload_size < info.payload_size))
+        {
+            status = kArdPacketStatusInvalidPayloadSize;
+            ResetState(m_read);
+        }
+        else
+        {
+            // advance state
+            status = (m_config.crc ? kArdPacketStatusHeaderInProgress : kArdPacketStatusPayloadInProgress);
+            m_read.state = (m_config.crc ? kArdPacketStateHeaderCrc : kArdPacketStatePayload);
+        }
+    }
+
+    return status;
+}
+
+eArdPacketStatus ArdPacket::ProcessReadStateHeaderCrc()
+{
+    eArdPacketStatus status = kArdPacketStatusStart;
+
+    uint8_t read_data[kArdPacketCrcBytes];
+    const size_t bytes_read = m_stream.read(read_data, kArdPacketCrcBytes);
+    if (bytes_read != kArdPacketCrcBytes)
+    {
+        status = kArdPacketStatusReadFailed;
+        ResetState(m_read);
+    }
+    else
+    {
+        // crc from data
+        m_read.crc = crc_update(m_read.crc, read_data, kArdPacketCrcBytes);
+        // finalize and test
+        m_read.crc = crc_finalize(m_read.crc);
+        // check payload crc
+        if (m_read.crc == 0)
+        {
+            // passed crc
+            status = kArdPacketStatusPayloadInProgress;
+            m_read.state = kArdPacketStatePayload;
+            // initial crc for payload
+            m_read.crc = crc_init();
+        }
+        else
+        {
+            status = kArdPacketStatusCrcFailed;
+            ResetState(m_read);
+        }
+    }
+
+    return status;
+}
+
+eArdPacketStatus ArdPacket::ProcessReadStatePayload(const ArdPacketPayloadInfo &info, uint8_t *payload)
+{
+    eArdPacketStatus status = kArdPacketStatusPayloadInProgress;
+
+    const size_t remaining_payload = info.payload_size - m_read.payload_index;
+    const size_t bytes_to_read = (remaining_payload < m_read.available ? remaining_payload : m_read.available);
+
+    const size_t bytes_read = m_stream.read(&payload[m_read.payload_index], bytes_to_read);
+    if (m_config.crc && bytes_read > 0)
+    {
+        m_read.crc = crc_update(m_read.crc, &payload[m_read.payload_index], bytes_read);
+    }
+    m_read.payload_index += bytes_read;
+
+    if (bytes_read == 0)
+    {
+        status = kArdPacketStatusReadFailed;
+        ResetState(m_read);
+    }
+    else if (m_read.payload_index == info.payload_size)
+    {
+        status = (m_config.crc ? kArdPacketStatusPayloadInProgress : kArdPacketStatusDone);
+        m_read.state = (m_config.crc ? kArdPacketStatePayloadCrc : kArdPacketStateDone);
+    }
+
+    return status;
+}
+
+eArdPacketStatus ArdPacket::ProcessReadStatePayloadCrc()
+{
+    eArdPacketStatus status = kArdPacketStatusStart;
+
+    uint8_t read_data[kArdPacketCrcBytes];
+    const size_t bytes_read = m_stream.read(read_data, kArdPacketCrcBytes);
+    if (bytes_read != kArdPacketCrcBytes)
+    {
+        status = kArdPacketStatusReadFailed;
+        ResetState(m_read);
+    }
+    else
+    {
+        // crc from data
+        m_read.crc = crc_update(m_read.crc, read_data, kArdPacketCrcBytes);
+        // finalize and test
+        m_read.crc = crc_finalize(m_read.crc);
+        // check payload crc
+        if (m_read.crc == 0)
+        {
+            // passed crc
+            status = kArdPacketStatusDone;
+            m_read.state = kArdPacketStateDone;
+        }
+        else
+        {
+            status = kArdPacketStatusCrcFailed;
+            ResetState(m_read);
+        }
+    }
+
+    return status;
+}
+
+// Write State Processing
+
+eArdPacketStatus ArdPacket::ProcessWriteStateDelimiter()
+{
+    // write
+    m_stream.write(m_config.delimiter);
+    // crc update
+    if (m_config.crc)
+    {
+        m_write.crc = crc_update(m_write.crc, &m_config.delimiter, sizeof(uint8_t));
+    }
+    // advance state
+    m_write.state = kArdPacketStateMessageType;
+    return kArdPacketStatusHeaderInProgress;
+}
+
+eArdPacketStatus ArdPacket::ProcessWriteStateMessageType(const ArdPacketPayloadInfo &info)
+{
+    // copy from message type to data
+    // host endian copy (TODO: ensure consistent endianness)
+    uint8_t write_data[kArdPacketMaxMessageTypeBytes];
+    memcpy(write_data, &info.message_type, m_config.message_type_bytes);
+    // write
+    m_stream.write(write_data, m_config.message_type_bytes);
+    // crc update
+    if (m_config.crc)
+    {
+        m_write.crc = crc_update(m_write.crc, write_data, m_config.message_type_bytes);
+    }
+    // advance state
+    m_write.state = kArdPacketStatePayloadSize;
+    return kArdPacketStatusHeaderInProgress;
+}
+
+eArdPacketStatus ArdPacket::ProcessWriteStatePayloadSize(const ArdPacketPayloadInfo &info)
+{
+    // copy from payload size to data
+    // host endian copy (TODO: ensure consistent endianness)
+    uint8_t write_data[kArdPacketMaxMessageTypeBytes];
+    memcpy(write_data, &info.payload_size, m_config.payload_size_bytes);
+    // write
+    m_stream.write(write_data, m_config.payload_size_bytes);
+    // crc update
+    if (m_config.crc)
+    {
+        m_write.crc = crc_update(m_write.crc, write_data, m_config.payload_size_bytes);
+    }
+    // advance state
+    m_write.state = (m_config.crc ? kArdPacketStateHeaderCrc : kArdPacketStatePayload);
+    return (m_config.crc ? kArdPacketStatusHeaderInProgress : kArdPacketStatusPayloadInProgress);
+}
+
+eArdPacketStatus ArdPacket::ProcessWriteStateHeaderCrc()
+{
+    // finalize crc
+    m_write.crc = crc_finalize(m_write.crc);
+    // write
+    m_stream.write(reinterpret_cast<uint8_t*>(&m_write.crc), kArdPacketCrcBytes);
+    // reset crc
+    m_write.crc = crc_init();
+    // advance state
+    m_write.state = kArdPacketStatePayload;
+    return kArdPacketStatusPayloadInProgress;
+}
+
+eArdPacketStatus ArdPacket::ProcessWriteStatePayload(const ArdPacketPayloadInfo &info, const uint8_t *payload)
+{
+    eArdPacketStatus status = kArdPacketStatusPayloadInProgress;
+    // remaining bytes
+    const size_t remaining_payload = info.payload_size - m_write.payload_index;
+    const size_t bytes_to_write = (remaining_payload < m_write.available ? remaining_payload : m_write.available);
+    // write
+    m_stream.write(&payload[m_write.payload_index], bytes_to_write);
+    // crc update
+    if (m_config.crc)
+    {
+        m_write.crc = crc_update(m_write.crc, &payload[m_write.payload_index], bytes_to_write);
+    }
+    // update state
+    m_write.payload_index += bytes_to_write;
+    if (m_write.payload_index == info.payload_size)
+    {
+        status = (m_config.crc ? kArdPacketStatusPayloadInProgress : kArdPacketStatusDone);
+        m_write.state = (m_config.crc ? kArdPacketStatePayloadCrc : kArdPacketStateDone);
+    }
+
+    return status;
+}
+
+eArdPacketStatus ArdPacket::ProcessWriteStatePayloadCrc()
+{
+    // finalize crc
+    m_write.crc = crc_finalize(m_write.crc);
+    // write
+    m_stream.write(reinterpret_cast<uint8_t*>(&m_write.crc), kArdPacketCrcBytes);
+    // advance state
+    m_write.state = kArdPacketStateDone;
+    return kArdPacketStatusDone;
 }
 
 // template <Stream &m_stream, Stream &m_stream>
 // eArdPacketStreamStatus ArdPacketStream<m_stream, m_stream>::
 //     ReceivePayload(size_t max_payload_size, uint8_t *payload,
-//     size_t &payload_size, eArdPacketReadStatus &read_status)
+//     size_t &payload_size, eArdPacketStatus &read_status)
 // {
 
 // // inline eArdPacketPayloadStatus ArdPacket::GetPayload(const size_t payload_max_size, uint8_t *payload,
 //                                                                         size_t &payload_size, uint32_t &message_type)
 // {
 //     eArdPacketPayloadStatus result = kArdPacketPayloadSuccess;
-//     if (m_read_state != kArdPacketStatePrepared)
+//     if (m_write.state != kArdPacketStateDone)
 //     {
 //         result = kArdPacketPayloadNotReady;
 //     }
@@ -657,30 +864,30 @@ inline eArdPacketReadStatus ArdPacket::ReceivePayload(const size_t max_payload_s
 //     return result;
 // }
 
-// inline eArdPacketGenerateStatus ArdPacket::GeneratePacketHeader(
-//     const uint32_t message_type, const size_t payload_size, const uint8_t *payload, const size_t max_packet_size, uint8_t *packet,
-//     size_t &packet_size) const
+// inline eArdPacketStatus ArdPacket::WritePacketHeader(
+//     const uint32_t message_type, const size_t payload_size, const uint8_t *payload, const size_t max_packet_size,
+//     uint8_t *packet, size_t &packet_size) const
 // {
-//     eArdPacketGenerateStatus status = kArdPacketGenerateSuccess;
-//     if (message_type > m_max_message_type)
+//     eArdPacketStatus status = kArdPacketStatusSuccess;
+//     if (message_type > m_max_message_type_value)
 //     {
-//         status = kArdPacketGenerateInvalidMessageType;
+//         status = kArdPacketStatusInvalidMessageType;
 //     }
 //     else if (payload_size > m_config.max_payload_size)
 //     {
-//         status = kArdPacketGenerateExceedsMaxPayloadSize;
+//         status = kArdPacketStatusExceedsMaxPayloadSize;
 //     }
 //     else if (payload_size > max_packet_size)
 //     {
-//         status = kArdPacketGenerateExceedsMaxPacketSize;
+//         status = kArdPacketStatusExceedsMaxPacketSize;
 //     }
 //     else
 //     {
 //         const size_t header_size = 1 + m_config.message_type_bytes + m_config.payload_size_bytes;
-//         const size_t header_and_crc_size = header_size + (m_config.crc ? 2 * sizeof(crc_t) : 0.0);
+//         const size_t header_and_crc_size = header_size + (m_config.crc ? 2 * kArdPacketCrcBytes : 0.0);
 //         if ((max_packet_size - payload_size) < header_and_crc_size)
 //         {
-//             status = kArdPacketGenerateExceedsMaxPacketSize;
+//             status = kArdPacketStatusExceedsMaxPacketSize;
 //         }
 //         else
 //         {
@@ -705,7 +912,7 @@ inline eArdPacketReadStatus ArdPacket::ReceivePayload(const size_t max_payload_s
 //             if (m_config.crc)
 //             {
 //                 ard_crc16_kermit_append(packet, header_size);
-//                 packet_index += sizeof(crc_t);
+//                 packet_index += kArdPacketCrcBytes;
 //             }
 
 //             // payload
