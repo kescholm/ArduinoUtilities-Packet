@@ -131,7 +131,7 @@ void setup()
     UNITY_BEGIN(); // IMPORTANT LINE!
 
     // begin serial
-    Serial.begin(ARD_SERIAL_BAUDRATE);
+    Serial.begin(SERIAL_BAUDRATE);
     delay(100);
 
     // Run Tests
