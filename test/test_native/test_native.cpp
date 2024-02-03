@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "ArdPacketBuffer.h"
 #include "ArdPacket.h"
 
 // void setUp(void) {
@@ -12,95 +13,8 @@
 
 #define TEST_MESSAGE_STRING "Hello, World!"
 
-class ArdPacketSerialMock : public ArdPacketStreamInterface
-{
-   public:
-    ArdPacketSerialMock() = default;
-
-    int available() override
-    {
-        return m_read_available;
-    }
-    int read() override
-    {
-        int read_byte = -1;
-        if (m_read_offset < m_read_available)
-        {
-            read_byte = m_read_data[m_read_offset];
-            m_read_offset++;
-        }
-        return read_byte;
-    }
-    size_t read(uint8_t *buffer, size_t size) override
-    {
-        size_t read_index = 0;
-        int read_byte = 0;
-        while (read_byte >= 0 && read_index < size)
-        {
-            read_byte = read();
-            if (read_byte >= 0)
-            {
-                buffer[read_index] = static_cast<uint8_t>(read_byte);
-                read_index++;
-            }
-        }
-        return read_index;
-    }
-
-    int availableForWrite() override
-    {
-        return m_write_available;
-    }
-    size_t write(uint8_t value) override
-    {
-        size_t write_count = 0;
-        if (m_write_offset < m_write_available)
-        {
-            m_write_data[m_write_offset] = value;
-            m_write_offset++;
-            write_count = 1;
-        }
-        return write_count;
-    }
-    size_t write(const uint8_t *buffer, size_t size) override
-    {
-        size_t write_index = 0;
-        size_t write_count = 1;
-        while (write_count > 0 && write_index < size)
-        {
-            write_count = write(buffer[write_index]);
-            if (write_count > 0)
-            {
-                write_index++;
-            }
-        }
-        return write_index;
-    }
-
-    void MakeAvailableForRead(size_t size)
-    {
-        m_read_available = (kReadBufferSize < size ? kReadBufferSize : size);
-        m_read_offset = 0;
-    }
-
-    void MakeAvailableForWrite(size_t size)
-    {
-        m_write_available = (kWriteBufferSize < size ? kWriteBufferSize : size);
-        m_write_offset = 0;
-    }
-
-   public:
-    static constexpr int kReadBufferSize = 64;
-    static constexpr int kWriteBufferSize = 64;
-
-    size_t m_read_available = 0;
-    uint8_t m_read_data[kReadBufferSize] = {0};
-    size_t m_read_offset = 0;
-
-    size_t m_write_available = 0;
-    uint8_t m_write_data[kWriteBufferSize] = {0};
-    size_t m_write_offset = 0;
-};
+#define TEST_READ_BUFFER_SIZE 64
+#define TEST_WRITE_BUFFER_SIZE 64
 
 // utility
 
@@ -127,8 +41,12 @@ static size_t ArdPacketGetPacketSizeUtility(const ArdPacketConfig &config, const
 // Create and configure
 static void test_packet_configure_pass(void)
 {
-    ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
+    ArdPacketBuffer packet_buffer;
+    uint8_t read_buffer[TEST_READ_BUFFER_SIZE] = {'\0'};
+    uint8_t write_buffer[TEST_WRITE_BUFFER_SIZE] = {'\0'};
+    TEST_ASSERT_TRUE(packet_buffer.set_read_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    TEST_ASSERT_TRUE(packet_buffer.set_write_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    ArdPacket packet(packet_buffer);
 
     ArdPacketConfig config;
     config.crc = false;
@@ -162,8 +80,12 @@ static void test_packet_configure_pass(void)
 // Fail create and configure payload size
 static void test_packet_configure_fail_payload_bytes(void)
 {
-    ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
+    ArdPacketBuffer packet_buffer;
+    uint8_t read_buffer[TEST_READ_BUFFER_SIZE] = {'\0'};
+    uint8_t write_buffer[TEST_WRITE_BUFFER_SIZE] = {'\0'};
+    TEST_ASSERT_TRUE(packet_buffer.set_read_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    TEST_ASSERT_TRUE(packet_buffer.set_write_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    ArdPacket packet(packet_buffer);
 
     ArdPacketConfig config;
     config.crc = false;
@@ -187,8 +109,12 @@ static void test_packet_configure_fail_payload_bytes(void)
 // Create and configure
 static void test_packet_configure_fail_message_type(void)
 {
-    ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
+    ArdPacketBuffer packet_buffer;
+    uint8_t read_buffer[TEST_READ_BUFFER_SIZE] = {'\0'};
+    uint8_t write_buffer[TEST_WRITE_BUFFER_SIZE] = {'\0'};
+    TEST_ASSERT_TRUE(packet_buffer.set_read_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    TEST_ASSERT_TRUE(packet_buffer.set_write_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    ArdPacket packet(packet_buffer);
 
     ArdPacketConfig config;
     config.crc = false;
@@ -212,8 +138,12 @@ static void test_packet_configure_fail_message_type(void)
 // Fail create and configure max payload size
 static void test_packet_configure_fail_max_payload(void)
 {
-    ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
+    ArdPacketBuffer packet_buffer;
+    uint8_t read_buffer[TEST_READ_BUFFER_SIZE] = {'\0'};
+    uint8_t write_buffer[TEST_WRITE_BUFFER_SIZE] = {'\0'};
+    TEST_ASSERT_TRUE(packet_buffer.set_read_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    TEST_ASSERT_TRUE(packet_buffer.set_write_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    ArdPacket packet(packet_buffer);
 
     ArdPacketConfig config;
     config.crc = false;
@@ -234,8 +164,12 @@ static void test_packet_configure_fail_max_payload(void)
 // Write and read sample message
 static void test_packet_pass_write_read(void)
 {
-    ArdPacketSerialMock serial;
-    ArdPacket packet(dynamic_cast<ArdPacketStreamInterface &>(serial));
+    ArdPacketBuffer packet_buffer;
+    uint8_t read_buffer[TEST_READ_BUFFER_SIZE] = {'\0'};
+    uint8_t write_buffer[TEST_WRITE_BUFFER_SIZE] = {'\0'};
+    TEST_ASSERT_TRUE(packet_buffer.set_read_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    TEST_ASSERT_TRUE(packet_buffer.set_write_buffer(read_buffer, TEST_READ_BUFFER_SIZE));
+    ArdPacket packet(packet_buffer);
 
     // configure
     ArdPacketConfig config;
@@ -254,18 +188,18 @@ static void test_packet_pass_write_read(void)
     // sizes
     const size_t header_size = ArdPacketGetHeaderSizeUtility(config);
     const size_t packet_size = ArdPacketGetPacketSizeUtility(config, input_info.payload_size);
-    TEST_ASSERT_LESS_OR_EQUAL(serial.kWriteBufferSize, packet_size);
+    TEST_ASSERT_LESS_OR_EQUAL(TEST_WRITE_BUFFER_SIZE, packet_size);
 
     // write
-    serial.MakeAvailableForWrite(packet_size);
+    packet_buffer.set_write_buffer(write_buffer, packet_size);
     const eArdPacketStatus send_status =
         packet.SendPayload(input_info, reinterpret_cast<const uint8_t *>(input_test_message));
     TEST_ASSERT_EQUAL(kArdPacketStatusDone, send_status);
-    TEST_ASSERT_EQUAL_STRING(TEST_MESSAGE_STRING, &serial.m_write_data[header_size]);
+    TEST_ASSERT_EQUAL_STRING(TEST_MESSAGE_STRING, &write_buffer[header_size]);
 
     // read
-    serial.MakeAvailableForRead(packet_size);
-    memcpy(serial.m_read_data, serial.m_write_data, packet_size);
+    packet_buffer.set_read_buffer(read_buffer, packet_size);
+    memcpy(read_buffer, write_buffer, packet_size);
 
     uint8_t receive_buffer[sizeof(TEST_MESSAGE_STRING)] = {0};
     ArdPacketPayloadInfo receive_info;
