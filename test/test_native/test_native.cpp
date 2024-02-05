@@ -208,6 +208,50 @@ static void test_packet_pass_write_read(void)
     TEST_ASSERT_EQUAL_STRING(TEST_MESSAGE_STRING, receive_buffer);
 }
 
+// Write and read sample message
+static void test_packet_pass_static_write_read(void)
+{
+    uint8_t data_buffer[TEST_WRITE_BUFFER_SIZE] = {'\0'};
+
+    ArdPacketBuffer packet_buffer = {};
+    ArdPacket packet(packet_buffer);
+
+    // configure
+    ArdPacketConfig config;
+    config.crc = true;
+    config.delimiter = '|';
+    config.message_type_bytes = 2;
+    config.payload_size_bytes = 2;
+    config.max_payload_size = TEST_WRITE_BUFFER_SIZE - 9;
+    const eArdPacketConfigStatus status = packet.Configure(config);
+    TEST_ASSERT_EQUAL(kArdPacketConfigSuccess, status);
+
+    // input message
+    const char *input_test_message = TEST_MESSAGE_STRING;
+    const ArdPacketPayloadInfo input_info = {.message_type = 0, .payload_size = sizeof(TEST_MESSAGE_STRING)};
+
+    // sizes
+    const size_t header_size = ArdPacketGetHeaderSizeUtility(config);
+    const size_t packet_size = ArdPacketGetPacketSizeUtility(config, input_info.payload_size);
+    TEST_ASSERT_LESS_OR_EQUAL(TEST_WRITE_BUFFER_SIZE, packet_size);
+
+    // write
+    size_t packet_size_result = 0;
+    const eArdPacketStatus send_status = packet.WritePacketToBuffer(
+        input_info, reinterpret_cast<const uint8_t *>(input_test_message),
+        TEST_READ_BUFFER_SIZE, data_buffer, packet_size_result);
+    TEST_ASSERT_EQUAL(kArdPacketStatusDone, send_status);
+    TEST_ASSERT_EQUAL_STRING(TEST_MESSAGE_STRING, &data_buffer[header_size]);
+
+    // read
+    ArdPacketPayloadInfo receive_info;
+    size_t payload_index = 0;
+    const eArdPacketStatus recv_status = packet.ReadPacketFromBuffer(data_buffer, packet_size_result, receive_info, payload_index);
+    TEST_ASSERT_EQUAL(kArdPacketStatusDone, recv_status);
+    TEST_ASSERT_EQUAL_STRING(TEST_MESSAGE_STRING, &data_buffer[payload_index]);
+    TEST_ASSERT_EQUAL(7, payload_index);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -220,6 +264,8 @@ int main(void)
     RUN_TEST(test_packet_configure_fail_message_type);
     RUN_TEST(test_packet_configure_fail_max_payload);
     RUN_TEST(test_packet_pass_write_read);
+
+    RUN_TEST(test_packet_pass_static_write_read);
 
     // Done
     // ----

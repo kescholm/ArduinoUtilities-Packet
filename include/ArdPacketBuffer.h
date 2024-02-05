@@ -2,8 +2,6 @@
 #ifndef ARD_PACKET_BUFFER_H
 #define ARD_PACKET_BUFFER_H
 
-#include <Arduino.h>
-
 #include "ArdPacket.h"
 
 class ArdPacketBuffer : public ArdPacketStreamInterface
