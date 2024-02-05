@@ -3,6 +3,12 @@
 #ifndef ARD_PACKET_H
 #define ARD_PACKET_H
 
+#ifdef NATIVE_TEST_BUILD
+#include <arpa/inet.h>
+#else
+#include <Arduino.h>
+#endif
+
 #include <stdint.h>
 #include <string.h>
 
@@ -81,7 +87,9 @@ enum eArdPacketStatus
     kArdPacketStatusNotConfigured,
     kArdPacketStatusNotAvailable,
     kArdPacketStatusNotEnoughAvailable,
+    kArdPacketStatusPacketSizeTooSmall,
     kArdPacketStatusNoDelimiter,
+    kArdPacketStatusInvalidMessageType,
     kArdPacketStatusInvalidPayloadSize,
     kArdPacketStatusReadFailed,
     kArdPacketStatusCrcFailed,
@@ -180,6 +188,7 @@ class ArdPacket
     //                                    size_t max_packet_size, uint8_t *packet, size_t &packet_size) const;
 
    private:
+    static constexpr size_t kArdPacketDelimiterBytes = 1;
     static constexpr size_t kArdPacketCrcBytes = 2;
     static constexpr size_t kArdPacketMaxPayloadSizeBytes = 4;
     static constexpr size_t kArdPacketMaxMessageTypeBytes = 4;
@@ -205,6 +214,8 @@ class ArdPacket
         crc_t crc = 0;
     };
 
+    static void ConvertToBigEndian(const uint32_t value, const size_t value_bytes, uint8_t *data);
+    static uint32_t ConvertFromBigEndian(const uint8_t *data, const size_t value_bytes);
     static void ResetState(ArdPacketStateData &state);
 
     eArdPacketStatus ProcessReadStateDelimiter();
@@ -235,6 +246,48 @@ class ArdPacket
 
 // inline methods
 
+inline void ArdPacket::ConvertToBigEndian(const uint32_t value, const size_t value_bytes, uint8_t *data)
+{
+    // copy from data to packet
+    if (value_bytes == 1)
+    {
+        data[0] = static_cast<uint8_t>(value);
+    }
+    else if (value_bytes == 2)
+    {
+        uint16_t swapped_value = htons(static_cast<uint16_t>(value));
+        memcpy(data, &swapped_value, value_bytes);
+    }
+    else if (value_bytes == 4)
+    {
+        uint32_t swapped_value = htonl(value);
+        memcpy(data, &swapped_value, value_bytes);
+    }
+}
+
+inline uint32_t ArdPacket::ConvertFromBigEndian(const uint8_t *data, const size_t value_bytes)
+{
+    uint32_t retval = 0;
+    // copy from data to packet
+    if (value_bytes == 1)
+    {
+        retval = static_cast<uint32_t>(data[0]);
+    }
+    else if (value_bytes == 2)
+    {
+        uint16_t swap_value = 0;
+        memcpy(&swap_value, data, value_bytes);
+        retval = static_cast<uint32_t>(ntohs(swap_value));
+    }
+    else if (value_bytes == 4)
+    {
+        uint32_t swap_value = 0;
+        memcpy(&swap_value, data, value_bytes);
+        retval = ntohl(swap_value);
+    }
+    return retval;
+}
+
 inline eArdPacketConfigStatus ArdPacket::Configure(const ArdPacketConfig &config)
 {
     eArdPacketConfigStatus status = kArdPacketConfigSuccess;
@@ -254,7 +307,7 @@ inline eArdPacketConfigStatus ArdPacket::Configure(const ArdPacketConfig &config
     size_t header_and_crc_size = 0;
     if (status == kArdPacketConfigSuccess)
     {
-        header_size = 1 + config.message_type_bytes + config.payload_size_bytes;
+        header_size = kArdPacketDelimiterBytes + config.message_type_bytes + config.payload_size_bytes;
         header_and_crc_size = header_size;
         if (config.crc)
         {
@@ -421,6 +474,10 @@ inline eArdPacketStatus ArdPacket::SendPayload(const ArdPacketPayloadInfo &info,
     {
         status = kArdPacketStatusNotAvailable;
     }
+    else if (info.message_type > m_max_message_type_value)
+    {
+        status = kArdPacketStatusInvalidMessageType;
+    }
     else if (info.payload_size == 0)
     {
         status = kArdPacketStatusNotEnoughAvailable;
@@ -559,7 +616,7 @@ inline eArdPacketStatus ArdPacket::ProcessReadStateDelimiter()
         {
             // initial crc for header
             m_read.crc = crc_init();
-            m_read.crc = crc_update(m_read.crc, &m_config.delimiter, 1);
+            m_read.crc = crc_update(m_read.crc, &m_config.delimiter, kArdPacketDelimiterBytes);
         }
     }
     else
@@ -588,9 +645,7 @@ inline eArdPacketStatus ArdPacket::ProcessReadStateMessageType(ArdPacketPayloadI
             m_read.crc = crc_update(m_read.crc, read_data, m_config.message_type_bytes);
         }
         // copy message type from data
-        // host endian copy (TODO: ensure consistent endianness)
-        info.message_type = 0;
-        memcpy(&info.message_type, read_data, m_config.message_type_bytes);
+        info.message_type = ConvertFromBigEndian(read_data, m_config.message_type_bytes);
         // advance state
         status = kArdPacketStatusHeaderInProgress;
         m_read.state = kArdPacketStatePayloadSize;
@@ -617,8 +672,7 @@ eArdPacketStatus ArdPacket::ProcessReadStatePayloadSize(const size_t max_payload
             m_read.crc = crc_update(m_read.crc, read_data, m_config.payload_size_bytes);
         }
         // copy from data to packet
-        // host endian copy (TODO: ensure consistent endianness)
-        memcpy(&info.payload_size, read_data, m_config.payload_size_bytes);
+        info.payload_size = ConvertFromBigEndian(read_data, m_config.payload_size_bytes);
         // check payload size
         if ((info.payload_size == 0) || (info.payload_size > m_config.max_payload_size) ||
             (max_payload_size < info.payload_size))
@@ -756,7 +810,7 @@ eArdPacketStatus ArdPacket::ProcessWriteStateMessageType(const ArdPacketPayloadI
     // copy from message type to data
     // host endian copy (TODO: ensure consistent endianness)
     uint8_t write_data[kArdPacketMaxMessageTypeBytes];
-    memcpy(write_data, &info.message_type, m_config.message_type_bytes);
+    ConvertToBigEndian(info.message_type, m_config.message_type_bytes, write_data);
     // write
     m_stream.write(write_data, m_config.message_type_bytes);
     // crc update
@@ -772,9 +826,8 @@ eArdPacketStatus ArdPacket::ProcessWriteStateMessageType(const ArdPacketPayloadI
 eArdPacketStatus ArdPacket::ProcessWriteStatePayloadSize(const ArdPacketPayloadInfo &info)
 {
     // copy from payload size to data
-    // host endian copy (TODO: ensure consistent endianness)
     uint8_t write_data[kArdPacketMaxMessageTypeBytes];
-    memcpy(write_data, &info.payload_size, m_config.payload_size_bytes);
+    ConvertToBigEndian(info.payload_size, m_config.payload_size_bytes, write_data);
     // write
     m_stream.write(write_data, m_config.payload_size_bytes);
     // crc update
